@@ -4,33 +4,34 @@ This project is a simple web application built using the Gin framework that allo
 
 ## Project Structure
 
+```go-gin-image-store/
+├── cmd/
+│   └── server/
+│       └── main.go             # Punto de entrada de la aplicación
+├── internal/
+│   ├── config/
+│   │   └── config.go           # Configuración y variables de entorno
+│   ├── delivery/
+│   │   └── http/
+│   │       ├── http.go         # Configuración de rutas
+│   │       └── image_handler.go # Handlers para subir y servir imágenes
+│   ├── domain/
+│   │   └── models/
+│   │       └── image.go        # Modelo de imagen
+│   ├── repository/
+│   │   ├── image_repository.go # Interfaz del repositorio
+│   │   └── mongodb/
+│   │       └── mongo_repository.go # Implementación MongoDB
+│   ├── storage/
+│   │   └── database.go         # Conexión a MongoDB
+│   └── usercase/               # (Nota: debería ser "usecase")
+│       └── image_service.go    # Lógica de negocio de imágenes
+├── .vscode/
+│   └── launch.json            # Configuración de depuración
+├── go.mod                     # Definición de módulo y dependencias
+├── go.sum                     # Checksums de dependencias
+└── .env                       # Variables de entorno
 ```
-go-gin-image-store
-├── cmd
-│   └── server
-│       └── main.go          # Entry point of the application
-├── internal
-│   ├── config
-│   │   └── config.go       # Configuration settings
-│   ├── handlers
-│   │   ├── image_handler.go # Handlers for image upload and retrieval
-│   │   └── routes.go       # Route definitions
-│   ├── middleware
-│   │   └── auth.go         # Authentication middleware
-│   ├── models
-│   │   └── image.go        # Image model structure
-│   └── storage
-│       └── mongodb.go      # MongoDB connection and CRUD operations
-├── pkg
-│   └── utils
-│       └── image.go        # Utility functions for image processing
-├── go.mod                   # Module definition and dependencies
-├── go.sum                   # Module dependency checksums
-├── .env                     # Environment variables
-├── .air.toml                # Air configuration for live reload
-└── README.md                # Project documentation
-```
-
 ## Setup Instructions
 
 1. **Clone the repository:**
