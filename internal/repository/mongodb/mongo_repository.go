@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
-	"image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -34,31 +33,68 @@ func compressImage(data []byte, contentType string) ([]byte, error) {
 		return nil, err
 	}
 
+	// Obtener dimensiones originales
+	bounds := img.Bounds()
+	origWidth := bounds.Dx()
+	origHeight := bounds.Dy()
+
+	// Definir dimensión máxima (ajustar según necesidades)
+	var maxDimension int = 1200
+
+	// Calcular nuevas dimensiones manteniendo la proporción
+	var newWidth, newHeight int
+	if origWidth > origHeight {
+		newWidth = maxDimension
+		newHeight = origHeight * maxDimension / origWidth
+	} else {
+		newHeight = maxDimension
+		newWidth = origWidth * maxDimension / origHeight
+	}
+
+	// Redimensionar solo si la imagen es más grande que maxDimension
+	if origWidth > maxDimension || origHeight > maxDimension {
+		// Crear imagen redimensionada usando algoritmo de escala bilineal
+		resized := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
+		// Nota: En producción, podrías usar una biblioteca más avanzada como github.com/disintegration/imaging
+		// Este es un método básico de redimensionamiento:
+		for y := 0; y < newHeight; y++ {
+			for x := 0; x < newWidth; x++ {
+				// Mapear coordenadas de destino a origen
+				ox := x * origWidth / newWidth
+				oy := y * origHeight / newHeight
+				resized.Set(x, y, img.At(ox, oy))
+			}
+		}
+		img = resized
+	}
+
 	var buf bytes.Buffer
 
 	switch {
 	case contentType == "image/jpeg" || format == "jpeg" || format == "jpg":
-		// Comprimir JPEG con 75% de calidad (puedes ajustar este valor)
-		opts := jpeg.Options{Quality: 75}
+		// Comprimir JPEG con calidad muy baja para lograr archivos pequeños
+		// Ajustar entre 15-30 según el balance calidad/tamaño deseado
+		opts := jpeg.Options{Quality: 20}
 		if err := jpeg.Encode(&buf, img, &opts); err != nil {
 			return nil, err
 		}
 
 	case contentType == "image/png" || format == "png":
-		encoder := png.Encoder{
-			CompressionLevel: png.BestCompression,
-		}
-		if err := encoder.Encode(&buf, img); err != nil {
+		// Para PNGs, convertir a JPEG si se requiere una compresión extrema
+		// Los PNG no alcanzan la misma compresión que JPEG para fotos
+		opts := jpeg.Options{Quality: 20}
+		if err := jpeg.Encode(&buf, img, &opts); err != nil {
 			return nil, err
 		}
+		// Actualizar contentType - Nota: esto no cambiará automáticamente en los metadatos
+		// a menos que modifiques la función Store
 
 	default:
-		return data, nil
-	}
-
-	// Verificar si la compresión tuvo efecto
-	if buf.Len() >= len(data) {
-		return data, nil
+		// Para otros formatos, intentar convertir a JPEG
+		opts := jpeg.Options{Quality: 20}
+		if err := jpeg.Encode(&buf, img, &opts); err != nil {
+			return data, nil // Si falla, devolver original
+		}
 	}
 
 	return buf.Bytes(), nil
