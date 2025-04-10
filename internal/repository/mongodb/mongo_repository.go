@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime"
 	"net/http"
@@ -23,6 +27,43 @@ type MongoImageRepository struct {
 	bucketName string
 }
 
+func compressImage(data []byte, contentType string) ([]byte, error) {
+	// Decodificar la imagen original
+	img, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+
+	switch {
+	case contentType == "image/jpeg" || format == "jpeg" || format == "jpg":
+		// Comprimir JPEG con 75% de calidad (puedes ajustar este valor)
+		opts := jpeg.Options{Quality: 75}
+		if err := jpeg.Encode(&buf, img, &opts); err != nil {
+			return nil, err
+		}
+
+	case contentType == "image/png" || format == "png":
+		encoder := png.Encoder{
+			CompressionLevel: png.BestCompression,
+		}
+		if err := encoder.Encode(&buf, img); err != nil {
+			return nil, err
+		}
+
+	default:
+		return data, nil
+	}
+
+	// Verificar si la compresión tuvo efecto
+	if buf.Len() >= len(data) {
+		return data, nil
+	}
+
+	return buf.Bytes(), nil
+}
+
 // NewMongoImageRepository crea un nuevo repositorio para imágenes con MongoDB
 func NewMongoImageRepository(client *mongo.Client) *MongoImageRepository {
 	return &MongoImageRepository{
@@ -33,15 +74,6 @@ func NewMongoImageRepository(client *mongo.Client) *MongoImageRepository {
 
 // Store guarda una imagen en GridFS y retorna metadatos
 func (r *MongoImageRepository) Store(ctx context.Context, filename string, content io.Reader) (*models.Image, error) {
-	// Crear un bucket GridFS
-	bucket, err := gridfs.NewBucket(
-		r.client.Database("image-server"),
-		options.GridFSBucket().SetName(r.bucketName),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	// Leer todo el contenido para determinar tipo y tamaño
 	data, err := io.ReadAll(content)
 	if err != nil {
@@ -55,12 +87,28 @@ func (r *MongoImageRepository) Store(ctx context.Context, filename string, conte
 		contentType = http.DetectContentType(data)
 	}
 
+	// comprimir la imagen
+	compressedData, err := compressImage(data, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("compress image: %w", err)
+	}
+
+	// Crear un bucket GridFS
+	bucket, err := gridfs.NewBucket(
+		r.client.Database("image-server"),
+		options.GridFSBucket().SetName(r.bucketName),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	// Metadatos para el archivo
 	uploadOpts := options.GridFSUpload().
 		SetMetadata(map[string]interface{}{
 			"contentType": contentType,
 			"uploadDate":  time.Now(),
 			"filename":    filename,
+			"compressed":  true,
 		})
 
 	// Subir archivo a GridFS
@@ -71,7 +119,7 @@ func (r *MongoImageRepository) Store(ctx context.Context, filename string, conte
 	defer uploadStream.Close()
 
 	// Escribir datos al stream
-	size, err := uploadStream.Write(data)
+	size, err := uploadStream.Write(compressedData)
 	if err != nil {
 		return nil, err
 	}
